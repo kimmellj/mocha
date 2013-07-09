@@ -1,0 +1,6 @@
+{
+    "cloudant": {
+        "username": "username",
+        "password": "password"
+    }
+}

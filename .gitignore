@@ -11,3 +11,4 @@ my-reporter.js
 lib/browser/diff.js
 .idea
 *.iml
+config.json

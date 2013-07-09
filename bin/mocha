@@ -1,6 +1,41 @@
 #!/usr/bin/env node
 
 /**
+ * Filesystem Module, this is needed to read the config file
+ */
+var fs = require('fs');
+
+/**
+ * The Request Module is used to make RESTful requests to the CloudAnt API
+ */
+var request = require('request');
+
+/**
+ * Read the Configuration file
+ */
+try {
+  var configFile = fs.readFileSync('./config.json');
+} catch(err) {
+  console.log("The file ./config.json could not be read. Has this file been created? Does this user have read access for this file?");
+  console.log(err);
+  process.exit(1);
+}
+
+var config;
+
+/**
+ * Parse the JSON contained in the configuration file
+ */
+try {
+  config = JSON.parse(configFile);
+}
+catch (err) {
+  console.log('There has been an error parsing the JSON contained in ./config.json');
+  console.log(err);
+  process.exit(1);
+}
+
+/**
  * This tiny wrapper file checks for known node flags and appends them
  * when found, before invoking the "real" _mocha(1) executable.
  */
@@ -35,7 +70,52 @@ process.argv.slice(2).forEach(function (arg) {
   }
 });
 
-var proc = spawn(process.argv[0], args, { customFds: [0,1,2] });
+var proc = spawn(process.argv[0], args);
+
+var listen = false;
+
+var documentBody = "";
+
+proc.stdout.on("data", function(data) {
+  var msg = ""+data;
+  
+  console.log(msg);
+  
+  if (msg.charAt(0) == "{" || listen) {
+    listen = true;
+    documentBody += msg;
+  }
+  
+});
+
+proc.on('close', function(code, signal) {
+  if (documentBody == "") {
+    console.log("No Document Body so we're exiting now");
+    return;
+  }
+  
+  documentBody = JSON.parse(documentBody);
+  
+  documentBody.timestamp = Math.round(+new Date(documentBody.stats.start)/1000);
+  
+  var clientPattern = new RegExp(/\] (.*?) \-/i);
+  var client = clientPattern.exec(documentBody.tests[0].fullTitle);
+
+  documentBody.client = (client && client.length >= 1) ? client[1] : '';
+  
+  request.post('https://'+config.cloudant.username+'.cloudant.com/'+config.cloudant.database, {
+    'auth': {
+      'user': config.cloudant.username,
+      'pass': config.cloudant.password
+    },
+    json: documentBody
+  }, function(error, response, body){
+    console.log("Error: " + error);
+    console.log("Response Body: ");
+    console.log(body);
+  });     
+});
+
 proc.on('exit', function (code, signal) {
   process.on('exit', function(){
     if (signal) {
